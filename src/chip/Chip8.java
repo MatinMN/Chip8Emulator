@@ -5,67 +5,135 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.Arrays;
 
 public class Chip8 {
+	
 	private char[] memory;
-	private char[] registers; // chip8 has 16 registers V0 to VF
-	private char I; // address register
-	private char pc;// program counter
+	private char[] V;
+	private char I;
+	private char pc;
 	
 	private char stack[];
 	private int stackPointer;
 	
-	private int delayTimer;
-	private int soundTimer;
+	private int delay_timer;
+	private int sound_timer;
 	
 	private byte[] keys;
 	
 	private byte[] display;
 	
 	private boolean updatedFlag;
-	
-	public void init() {
-		
+	public void init(){
 		memory = new char[4096];
-		registers = new char[16];
-		I = 0x0; 
-		pc = 0x200; // the lower 512 bytes are generally used for font data
-		stack = new char[16];
-		stackPointer = 0;
+		V = new char[16];
+		pc = 0x200;
 		
-		delayTimer = 0;
-		soundTimer = 0;
+		I = 0x0;
+		
+		stack = new char[16];
+		
+		delay_timer = 0;
+		sound_timer = 0;
 		
 		keys = new byte[16];
-		display = new byte[64 * 32] ; // screen size is 64 * 32 (when displayed it's up scaled to 640 * 320)
+		
+		display = new byte[64 * 32];
 		
 		updatedFlag = false;
+		
+		loadFontset();
 	}
 	
 	public void run() {
-		char opcode = (char)( (memory[pc] << 8) | memory[pc + 1]);
-		System.out.print(Integer.toHexString(opcode) + ": ");
+	
+		char opcode = (char)((memory[pc] << 8) | memory[pc + 1]);
 		
-		switch (opcode & 0xF000) { // get the first nibble
+		System.out.println(Integer.toHexString(opcode));
 		
-		case 0x8000: // if the first nibble is 0x8 
+		switch (opcode & 0xF000) {
+		
+		case (0x0000): //0XXX
 			
-			switch (opcode & 0x000F) { // get the last nibble 
-			
-			case 0x0000: // 8xy0 
-				
-				default:
-					System.err.println("Unsupported opcode");
-					System.exit(0);
-					break;
+			switch (opcode & 0x000F) {
+			case(0x0000): //00E0
+				// clear screen
+				break;
+			case(0x000E): //00EE
+				// return from subroutine
+				pc = (char) (stack[--stackPointer] + 2);
+				break;
 			}
 			break;
-			
-		default:
-			System.err.println("Unsupported opcode");
-			System.exit(0);
-
+		case(0x1000): //1NNN (jump to NNN)
+			pc = (char)(opcode & 0x0FFF);
+			break;
+		
+		case(0x2000): //1NNN (jump to NNN)
+			char address = (char)( opcode & 0x0FFF);
+			stack[stackPointer++] = pc;
+			//System.out.println(Integer.toHexString(address));
+			pc = address;
+			break;
+		case(0x3000):{ //3XNN if(Vx==NN)
+			int x = ((opcode & 0x0F00) >> 8);
+			int _nnn = ((opcode & 0x0FF));
+			System.out.println(V[x]);
+			if(V[x] == _nnn)pc+=4;
+			else pc+=2;
+			break;
 		}
+		case(0x5000): //1NNN (jump to NNN)
+			break;
+			
+		case(0x6000): //1NNN (jump to NNN)
+			
+			int x = ((opcode & 0x0F00) >> 8);
+			V[x] = (char) (opcode & 0x00FF);
+			pc+=2;
+			break;
+		
+		case(0xA000): //1NNN 
+			I = (char)( opcode & 0x0FFF);
+			pc+=2;
+			break;
+			
+		case(0x7000): //1NNN (jump to NNN)
+			x = ((opcode & 0x0F00) >> 8);
+			V[x] = (char)((V[x] + (char) (opcode & 0x00FF) ) & 0xFF);
+			pc+=2;
+			break;
+			
+		case(0x8000): //1NNN (jump to NNN)
+			break;
+		
+		case(0xD000):{ //DXYN
+			int _x = V[((opcode & 0x0F00) >> 8)];
+			int _y = V[((opcode & 0x00F0) >> 4)];
+			int height = opcode & 0x000F;
+			
+			for (int i = 0;i<height;i++) {
+				int line = memory[I] + i;
+				for (int j=0;j<8;j++) {
+					int pixel = line & (0x80 >> j);
+					if (pixel !=0) {
+						int index = (_x + j) + (_y + i) * 64;
+						
+						if(display[index] == 1) {
+							V[0xF] = 1;
+						}
+						
+						display[index] ^= 1;
+					}
+				}
+			}
+			pc+=2;
+			updatedFlag = true;
+			break;
+		}
+		}
+		
 	}
 	
 	public byte[] getDisplay() {
@@ -97,6 +165,12 @@ public class Chip8 {
 			if(input!=null) {
 				input.close();
 			}
+		}
+	}
+	
+	public void loadFontset() {
+		for(int i = 0; i < Main.fontset.length; i++) {
+			memory[0x50 + i] = (char)(Main.fontset[i] & 0xFF);
 		}
 	}
 }
